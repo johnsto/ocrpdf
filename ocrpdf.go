@@ -7,8 +7,7 @@ package main
 */
 import "C"
 import (
-	"io"
-	"io/ioutil"
+	"bytes"
 	"log"
 	"os"
 	"unsafe"
@@ -62,6 +61,7 @@ func NewImageFromFile(filename string) *Image {
 
 type Image struct {
 	cPIX *C.PIX
+	buf  *bytes.Buffer
 }
 
 // Adjust improves the clarity and contrast of the image, generally reducing
@@ -90,17 +90,28 @@ func (i Image) Dimensions() (int32, int32, int32) {
 	return w, h, d
 }
 
-func (i Image) Read(p []byte) (n int, err error) {
-	f, err := ioutil.TempFile("", "")
-	if err != nil {
-		return 0, err
+func (i *Image) Read(p []byte) (n int, err error) {
+	if i.buf == nil {
+		log.Println("Creating image...")
+		var data *C.l_uint8
+		sz := C.size_t(0)
+		C.pixWriteMem(&data, &sz, i.cPIX, C.IFF_PNG)
+		buf := C.GoBytes(unsafe.Pointer(&data), C.int(sz))
+		i.buf = bytes.NewBuffer(buf)
+		log.Println("Created!")
 	}
-	data := []C.l_uint8{}
+	return i.buf.Read(p)
+}
+
+func (i Image) Reader() *bytes.Buffer {
+	log.Println("Creating image...")
+	var data *C.l_uint8
 	sz := C.size_t(0)
-	C.pixWriteMem(&data, &sz, i.cPIX, C.IFF_DEFAULT)
-	log.Println(sz)
-	_ = data
-	return -1, io.EOF
+	C.pixWriteMem(&data, &sz, i.cPIX, C.IFF_PNG)
+	buf := C.GoBytes(unsafe.Pointer(&data), C.int(sz))
+	log.Println(len(buf))
+	log.Println(buf[0:10])
+	return bytes.NewBuffer(buf)
 }
 
 func main() {
@@ -113,12 +124,13 @@ func main() {
 	}
 
 	img := NewImageFromFile(infile)
-	img.Read([]byte{})
 	w, h, _ := img.Dimensions()
 	t.SetImagePix(img.cPIX)
 
+	log.Println("Recognising...")
 	words := t.Words()
 
+	log.Println("Creating page...")
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPageFormat("P", gofpdf.SizeType{
 		Wd: float64(w) / 10,
@@ -140,9 +152,11 @@ func main() {
 
 	scanLayer := pdf.AddLayer("Scan", true)
 	pdf.BeginLayer(scanLayer)
-	pdf.Image(infile, 0, 0, float64(w)/10, float64(h)/10, false, "", 0, "")
+	pdf.RegisterImageReader("img", "png", img.Reader())
+	//pdf.Image("img", 0, 0, float64(w)/10, float64(h)/10, false, "png", 0, "")
 	pdf.EndLayer()
 
+	log.Println("Saving...")
 	outfile, _ := os.Create("test.pdf")
 	pdf.OutputAndClose(outfile)
 }
