@@ -7,6 +7,8 @@ package main
 */
 import "C"
 import (
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"unsafe"
@@ -43,6 +45,64 @@ func (o Options) InputFilenames() []string {
 	return nil
 }
 
+func NewImageFromFile(filename string) *Image {
+	cFilename := C.CString(filename)
+	defer C.free(unsafe.Pointer(cFilename))
+
+	// create new PIX
+	cPIX := C.pixRead(cFilename)
+	if cPIX == nil {
+		log.Fatalln("could not create PIX from given filename")
+	}
+
+	return &Image{
+		cPIX: cPIX,
+	}
+}
+
+type Image struct {
+	cPIX *C.PIX
+}
+
+// Adjust improves the clarity and contrast of the image, generally reducing
+// scanning artifacts.
+func (i *Image) Adjust(threshold float32) Image {
+	result := C.pixContrastTRC(i.cPIX, i.cPIX, C.l_float32(threshold))
+	return Image{
+		cPIX: result,
+	}
+}
+
+// Dimensions calculates the width, height and colour depth of the image.
+func (i Image) Dimensions() (int32, int32, int32) {
+	var w, h, d int32
+
+	cW := C.l_int32(w)
+	cH := C.l_int32(h)
+	cD := C.l_int32(d)
+
+	C.pixGetDimensions(i.cPIX, &cW, &cH, &cD)
+
+	w = int32(cW)
+	h = int32(cH)
+	d = int32(cD)
+
+	return w, h, d
+}
+
+func (i Image) Read(p []byte) (n int, err error) {
+	f, err := ioutil.TempFile("", "")
+	if err != nil {
+		return 0, err
+	}
+	data := []C.l_uint8{}
+	sz := C.size_t(0)
+	C.pixWriteMem(&data, &sz, i.cPIX, C.IFF_DEFAULT)
+	log.Println(sz)
+	_ = data
+	return -1, io.EOF
+}
+
 func main() {
 	infile := "test.jpg"
 
@@ -52,38 +112,17 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	cFilename := C.CString(infile)
-	defer C.free(unsafe.Pointer(cFilename))
-
-	// create new PIX
-	cPIX := C.pixRead(cFilename)
-	if cPIX == nil {
-		log.Fatalln("could not create PIX from given filename")
-	}
-
-	grey := C.pixConvertRGBToGrayFast(cPIX)
-	//tophat := C.pixTophat(grey, C.l_int32(15), C.l_int32(15), C.L_TOPHAT_BLACK)
-	result := C.pixContrastTRC(cPIX, cPIX, C.l_float32(0.5))
-	C.pixWritePng(C.CString("test.png"), result, C.l_float32(2.2))
-
-	t.SetImagePix(grey)
+	img := NewImageFromFile(infile)
+	img.Read([]byte{})
+	w, h, _ := img.Dimensions()
+	t.SetImagePix(img.cPIX)
 
 	words := t.Words()
 
-	var imgWidth, imgHeight, imgDepth int32
-	cW := C.l_int32(imgWidth)
-	cH := C.l_int32(imgHeight)
-	cD := C.l_int32(imgDepth)
-	C.pixGetDimensions(cPIX, &cW, &cH, &cD)
-	imgWidth = int32(cW)
-	imgHeight = int32(cH)
-
-	log.Println(imgWidth, imgHeight)
-
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPageFormat("P", gofpdf.SizeType{
-		Wd: float64(imgWidth) / 10,
-		Ht: float64(imgHeight) / 10,
+		Wd: float64(w) / 10,
+		Ht: float64(h) / 10,
 	})
 
 	pdf.SetAutoPageBreak(false, 0)
@@ -101,7 +140,7 @@ func main() {
 
 	scanLayer := pdf.AddLayer("Scan", true)
 	pdf.BeginLayer(scanLayer)
-	pdf.Image(infile, 0, 0, float64(imgWidth)/10, float64(imgHeight)/10, false, "", 0, "")
+	pdf.Image(infile, 0, 0, float64(w)/10, float64(h)/10, false, "", 0, "")
 	pdf.EndLayer()
 
 	outfile, _ := os.Create("test.pdf")
