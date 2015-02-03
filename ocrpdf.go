@@ -1,40 +1,15 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"code.google.com/p/gofpdf"
 )
-
-var paperSizes map[string]PageSize
-
-type PageSize struct {
-	Width  float64
-	Height float64
-	Units  string
-}
-
-func init() {
-	paperSizes = map[string]PageSize{
-		"a4":     {210, 297, "mm"},
-		"pa4":    {210, 280, "mm"},
-		"a5":     {105, 149, "mm"},
-		"letter": {216, 279, "mm"},
-		"legal":  {216, 356, "mm"},
-		"c4":     {229, 324, "mm"},
-	}
-}
-
-type Options struct {
-	Input  string
-	Size   string
-	Output string
-}
-
-func (o Options) InputFilenames() []string {
-	return nil
-}
 
 type Document struct {
 	pdf         *gofpdf.Fpdf
@@ -45,7 +20,6 @@ type Document struct {
 func NewDocument(size string) *Document {
 	pdf := gofpdf.New("P", "mm", size, "")
 	pdf.SetAutoPageBreak(false, 0)
-	pdf.SetFont("Arial", "B", 10)
 	ocrLayerId := pdf.AddLayer("OCR", true)
 	scanLayerId := pdf.AddLayer("Scan", true)
 	return &Document{
@@ -65,20 +39,25 @@ func (d *Document) AddPage(imagename string, image Image, words []Word) error {
 	w, h := pdf.GetPageSize()
 	mx, my := 1.0, 1.0
 
-	if iw*h > ih*w {
+	if iw*h < ih*w {
 		w = h * iw / ih
-		mx = w / iw
 	} else {
 		h = w * ih / iw
-		my = h / ih
 	}
+	mx = w / iw
+	my = h / ih
+
+	pdf.SetFont("Arial", "B", 10)
+	pdf.Write(8, "This line belongs to layer 1.\n")
 
 	pdf.BeginLayer(d.ocrLayerId)
+	pdf.SetFont("Arial", "B", 10)
 	for _, word := range words {
-		width := float64(word.Right-word.Left) * mx
-		height := float64(word.Bottom-word.Top) * my
+		ww := float64(word.Right-word.Left) * mx
+		wh := float64(word.Bottom-word.Top) * my
+		_, _ = ww, wh
 		pdf.SetXY(float64(word.Left)*mx, float64(word.Top)*my)
-		pdf.Cell(width, height, word.Text)
+		pdf.Cell(ww, wh, word.Text)
 	}
 	pdf.EndLayer()
 
@@ -87,7 +66,6 @@ func (d *Document) AddPage(imagename string, image Image, words []Word) error {
 	if err != nil {
 		log.Fatalln(err)
 	}
-
 	pdf.RegisterImageReader(imagename, "jpg", reader)
 	pdf.Image(imagename, 0, 0, w, h, false, "jpg", 0, "")
 	pdf.EndLayer()
@@ -100,26 +78,47 @@ func (d *Document) AddPageFromFile(tess *Tess, filename string) {
 	img = img.Adjust(0.9)
 	tess.SetImagePix(img.cPIX)
 
-	log.Println("Recognising...")
 	words := tess.Words()
 
-	doc := NewDocument("A4")
-
-	doc.AddPage(filename, *img, words)
+	d.AddPage(filename, *img, words)
 }
 
 func main() {
-	path := "/usr/share/tesseract-ocr/tessdata"
-	t, err := NewTess(path, "eng")
+
+	tessData := flag.String("tess-data", "/usr/share/tesseract-ocr/tessdata",
+		"Tesseract data directory")
+	tessLang := flag.String("tess-lang", "eng", "Tesseract language")
+	docSize := flag.String("size", "a4", "document size, e.g. A4 or 210x297mm")
+
+	flag.Parse()
+
+	tess, err := NewTess(*tessData, *tessLang)
 	if err != nil {
-		log.Fatalln(err)
+		fmt.Printf("Could not initialise Tesseract: %s\n", err)
+		os.Exit(1)
 	}
 
-	doc := NewDocument("A4")
-	doc.AddPageFromFile(t, "test_page1.jpg")
-	//doc.AddPageFromFile(t, "test_page2.jpg")
+	doc := NewDocument(*docSize)
 
-	log.Println("Saving...")
-	outfile, _ := os.Create("test.pdf")
+	files := flag.Args()
+
+	if len(files) == 0 {
+		fmt.Printf("No file(s) specified!\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	outfn := files[0]
+	if len(files) == 1 {
+		ext := filepath.Ext(outfn)
+		outfn = strings.TrimRight(outfn, ext) + ".pdf"
+	}
+
+	for _, fn := range files {
+		doc.AddPageFromFile(tess, fn)
+	}
+
+	outfile, _ := os.Create(outfn)
 	doc.pdf.OutputAndClose(outfile)
+
 }
