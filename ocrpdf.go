@@ -37,68 +37,89 @@ func (o Options) InputFilenames() []string {
 }
 
 type Document struct {
-	pdf *gofpdf.Fpdf
+	pdf         *gofpdf.Fpdf
+	ocrLayerId  int
+	scanLayerId int
 }
 
-func NewDocument() *Document {
-	pdf := gofpdf.New("P", "mm", "A4", "")
+func NewDocument(size string) *Document {
+	pdf := gofpdf.New("P", "mm", size, "")
+	pdf.SetAutoPageBreak(false, 0)
+	pdf.SetFont("Arial", "B", 10)
+	ocrLayerId := pdf.AddLayer("OCR", true)
+	scanLayerId := pdf.AddLayer("Scan", true)
 	return &Document{
-		pdf: pdf,
+		pdf:         pdf,
+		ocrLayerId:  ocrLayerId,
+		scanLayerId: scanLayerId,
 	}
 }
 
-func (d *Document) AddPage(i Image, size string, fit string) error {
+func (d *Document) AddPage(imagename string, image Image, words []Word) error {
+	pdf := d.pdf
+
+	pdf.AddPage()
+
+	imageWidth, imageHeight, _ := image.Dimensions()
+	iw, ih := float64(imageWidth), float64(imageHeight)
+	w, h := pdf.GetPageSize()
+	mx, my := 1.0, 1.0
+
+	if iw*h > ih*w {
+		w = h * iw / ih
+		mx = w / iw
+	} else {
+		h = w * ih / iw
+		my = h / ih
+	}
+
+	pdf.BeginLayer(d.ocrLayerId)
+	for _, word := range words {
+		width := float64(word.Right-word.Left) * mx
+		height := float64(word.Bottom-word.Top) * my
+		pdf.SetXY(float64(word.Left)*mx, float64(word.Top)*my)
+		pdf.Cell(width, height, word.Text)
+	}
+	pdf.EndLayer()
+
+	pdf.BeginLayer(d.scanLayerId)
+	reader, err := image.Reader("jpg")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	pdf.RegisterImageReader(imagename, "jpg", reader)
+	pdf.Image(imagename, 0, 0, w, h, false, "jpg", 0, "")
+	pdf.EndLayer()
+
 	return nil
 }
 
-func main() {
-	infile := "test.jpg"
+func (d *Document) AddPageFromFile(tess *Tess, filename string) {
+	img := NewImageFromFile(filename)
+	img = img.Adjust(0.9)
+	tess.SetImagePix(img.cPIX)
 
+	log.Println("Recognising...")
+	words := tess.Words()
+
+	doc := NewDocument("A4")
+
+	doc.AddPage(filename, *img, words)
+}
+
+func main() {
 	path := "/usr/share/tesseract-ocr/tessdata"
 	t, err := NewTess(path, "eng")
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	img := NewImageFromFile(infile)
-	img = img.Adjust(0.9)
-	w, h, _ := img.Dimensions()
-	t.SetImagePix(img.cPIX)
-
-	log.Println("Recognising...")
-	words := t.Words()
-
-	log.Println("Creating page...")
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.AddPageFormat("P", gofpdf.SizeType{
-		Wd: float64(w) / 10,
-		Ht: float64(h) / 10,
-	})
-
-	pdf.SetAutoPageBreak(false, 0)
-
-	ocrLayer := pdf.AddLayer("OCR", true)
-	pdf.SetFont("Arial", "B", 10)
-	pdf.BeginLayer(ocrLayer)
-	for _, word := range words {
-		width := float64(word.Right-word.Left) / 10
-		height := float64(word.Bottom-word.Top) / 10
-		pdf.SetXY(float64(word.Left)/10, float64(word.Top)/10)
-		pdf.Cell(width, height, word.Text)
-	}
-	pdf.EndLayer()
-
-	scanLayer := pdf.AddLayer("Scan", true)
-	pdf.BeginLayer(scanLayer)
-	reader, err := img.Reader("jpg")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	pdf.RegisterImageReader("img", "jpg", reader)
-	pdf.Image("img", 0, 0, float64(w)/10, float64(h)/10, false, "jpg", 0, "")
-	pdf.EndLayer()
+	doc := NewDocument("A4")
+	doc.AddPageFromFile(t, "test_page1.jpg")
+	//doc.AddPageFromFile(t, "test_page2.jpg")
 
 	log.Println("Saving...")
 	outfile, _ := os.Create("test.pdf")
-	pdf.OutputAndClose(outfile)
+	doc.pdf.OutputAndClose(outfile)
 }
