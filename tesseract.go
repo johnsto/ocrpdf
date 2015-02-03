@@ -52,17 +52,19 @@ func (t *Tess) delete() {
 	}
 }
 
+// SetImagePix sets the image to perform recognition on
 func (t *Tess) SetImagePix(pix *C.struct_Pix) {
 	C.TessBaseAPISetImage2(t.api, pix)
 }
 
+// Words analyses the document and returns a list of recognised words.
 func (t *Tess) Words() []Word {
 	var words []Word
 
 	C.TessBaseAPIRecognize(t.api, nil)
+
 	ri := C.TessBaseAPIGetIterator(t.api)
 	defer C.TessResultIteratorDelete(ri)
-
 	pi := C.TessResultIteratorGetPageIterator(ri)
 
 	if ri != nil {
@@ -71,6 +73,7 @@ func (t *Tess) Words() []Word {
 			var cLeft, cTop, cRight, cBottom C.int
 			C.TessPageIteratorBoundingBox(pi, C.RIL_WORD,
 				&cLeft, &cTop, &cRight, &cBottom)
+
 			word := Word{
 				Text:   C.GoString(cWord),
 				Left:   int(cLeft),
@@ -78,6 +81,7 @@ func (t *Tess) Words() []Word {
 				Top:    int(cTop),
 				Bottom: int(cBottom),
 			}
+
 			words = append(words, word)
 			if C.TessPageIteratorNext(pi, C.RIL_WORD) == C.int(0) {
 				break
