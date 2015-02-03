@@ -8,8 +8,10 @@ package main
 import "C"
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"os"
+	"strings"
 	"unsafe"
 
 	"code.google.com/p/gofpdf"
@@ -44,6 +46,8 @@ func (o Options) InputFilenames() []string {
 	return nil
 }
 
+// NewImageFromFile creates and returns a new image loaded from the given
+// file path.
 func NewImageFromFile(filename string) *Image {
 	cFilename := C.CString(filename)
 	defer C.free(unsafe.Pointer(cFilename))
@@ -55,13 +59,21 @@ func NewImageFromFile(filename string) *Image {
 	}
 
 	return &Image{
-		cPIX: cPIX,
+		cPIX:      cPIX,
+		pixFormat: C.getImpliedFileFormat(cFilename),
 	}
 }
 
 type Image struct {
-	cPIX *C.PIX
-	buf  *bytes.Buffer
+	cPIX      *C.PIX
+	buf       *bytes.Buffer
+	pixFormat C.l_int32
+}
+
+func (i *Image) Close() {
+	C.pixDestroy(&i.cPIX)
+	C.free(unsafe.Pointer(i.cPIX))
+	i.cPIX = nil
 }
 
 // Adjust improves the clarity and contrast of the image, generally reducing
@@ -90,20 +102,42 @@ func (i Image) Dimensions() (int32, int32, int32) {
 	return w, h, d
 }
 
-func (i *Image) Read(p []byte) (n int, err error) {
-	if i.buf == nil {
-		i.buf = i.Reader()
-	}
-	return i.buf.Read(p)
+// FormatString returns the image format as a string, e.g. 'jpg'
+func (i Image) FormatString() string {
+	return map[C.l_int32]string{
+		C.IFF_JFIF_JPEG: "jpg",
+		C.IFF_PNG:       "png",
+	}[i.pixFormat]
 }
 
-func (i Image) Reader() *bytes.Buffer {
+// Reader returns an io.Reader for the image data. If format is not specified,
+// the reader will produce image data in the original image format. Otherwise,
+// `format` must be either "jpg" or "png"
+func (i Image) Reader(format string) (*bytes.Buffer, error) {
+	pixFormat := i.pixFormat
+	if format != "" {
+		// Determine pix format
+		var ok bool
+		pixFormat, ok = map[string]C.l_int32{
+			"jpg":  C.IFF_JFIF_JPEG,
+			"jpeg": C.IFF_JFIF_JPEG,
+			"png":  C.IFF_PNG,
+		}[strings.ToLower(format)]
+		if !ok {
+			return nil, fmt.Errorf("Unknown or unsupported format '%s'", format)
+		}
+	}
+
 	var data *C.l_uint8
+	var length C.size_t
 	size := int(unsafe.Sizeof(*data))
-	length := C.size_t(0)
-	C.pixWriteMemPng(&data, &length, i.cPIX, C.l_float32(2.2))
+
+	C.pixWriteMem(&data, &length, i.cPIX, pixFormat)
 	buf := C.GoBytes(unsafe.Pointer(data), C.int(size*int(length)))
-	return bytes.NewBuffer(buf)
+
+	C.free(unsafe.Pointer(data))
+
+	return bytes.NewBuffer(buf), nil
 }
 
 func main() {
@@ -145,8 +179,12 @@ func main() {
 
 	scanLayer := pdf.AddLayer("Scan", true)
 	pdf.BeginLayer(scanLayer)
-	pdf.RegisterImageReader("img", "png", img.Reader())
-	pdf.Image("img", 0, 0, float64(w)/10, float64(h)/10, false, "png", 0, "")
+	reader, err := img.Reader("jpg")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	pdf.RegisterImageReader("img", "jpg", reader)
+	pdf.Image("img", 0, 0, float64(w)/10, float64(h)/10, false, "jpg", 0, "")
 	pdf.EndLayer()
 
 	log.Println("Saving...")
