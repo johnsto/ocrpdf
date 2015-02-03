@@ -66,9 +66,9 @@ type Image struct {
 
 // Adjust improves the clarity and contrast of the image, generally reducing
 // scanning artifacts.
-func (i *Image) Adjust(threshold float32) Image {
+func (i *Image) Adjust(threshold float32) *Image {
 	result := C.pixContrastTRC(i.cPIX, i.cPIX, C.l_float32(threshold))
-	return Image{
+	return &Image{
 		cPIX: result,
 	}
 }
@@ -92,25 +92,17 @@ func (i Image) Dimensions() (int32, int32, int32) {
 
 func (i *Image) Read(p []byte) (n int, err error) {
 	if i.buf == nil {
-		log.Println("Creating image...")
-		var data *C.l_uint8
-		sz := C.size_t(0)
-		C.pixWriteMem(&data, &sz, i.cPIX, C.IFF_PNG)
-		buf := C.GoBytes(unsafe.Pointer(&data), C.int(sz))
-		i.buf = bytes.NewBuffer(buf)
-		log.Println("Created!")
+		i.buf = i.Reader()
 	}
 	return i.buf.Read(p)
 }
 
 func (i Image) Reader() *bytes.Buffer {
-	log.Println("Creating image...")
 	var data *C.l_uint8
-	sz := C.size_t(0)
-	C.pixWriteMem(&data, &sz, i.cPIX, C.IFF_PNG)
-	buf := C.GoBytes(unsafe.Pointer(&data), C.int(sz))
-	log.Println(len(buf))
-	log.Println(buf[0:10])
+	size := int(unsafe.Sizeof(*data))
+	length := C.size_t(0)
+	C.pixWriteMemPng(&data, &length, i.cPIX, C.l_float32(2.2))
+	buf := C.GoBytes(unsafe.Pointer(data), C.int(size*int(length)))
 	return bytes.NewBuffer(buf)
 }
 
@@ -124,6 +116,7 @@ func main() {
 	}
 
 	img := NewImageFromFile(infile)
+	img = img.Adjust(0.5)
 	w, h, _ := img.Dimensions()
 	t.SetImagePix(img.cPIX)
 
@@ -153,7 +146,7 @@ func main() {
 	scanLayer := pdf.AddLayer("Scan", true)
 	pdf.BeginLayer(scanLayer)
 	pdf.RegisterImageReader("img", "png", img.Reader())
-	//pdf.Image("img", 0, 0, float64(w)/10, float64(h)/10, false, "png", 0, "")
+	pdf.Image("img", 0, 0, float64(w)/10, float64(h)/10, false, "png", 0, "")
 	pdf.EndLayer()
 
 	log.Println("Saving...")
