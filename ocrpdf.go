@@ -29,7 +29,7 @@ func NewDocument(size string) *Document {
 	}
 }
 
-func (d *Document) AddPage(imagename string, image Image, words []Word) error {
+func (d *Document) AddPage(imagename string, image Image, words []Word, format string) error {
 	pdf := d.pdf
 
 	pdf.AddPage()
@@ -62,33 +62,30 @@ func (d *Document) AddPage(imagename string, image Image, words []Word) error {
 	pdf.EndLayer()
 
 	pdf.BeginLayer(d.scanLayerId)
-	reader, err := image.Reader("jpg")
+	reader, err := image.Reader(format)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	pdf.RegisterImageReader(imagename, "jpg", reader)
-	pdf.Image(imagename, 0, 0, w, h, false, "jpg", 0, "")
+	pdf.RegisterImageReader(imagename, format, reader)
+	pdf.Image(imagename, 0, 0, w, h, false, format, 0, "")
 	pdf.EndLayer()
 
 	return nil
-}
-
-func (d *Document) AddPageFromFile(tess *Tess, filename string) {
-	img := NewImageFromFile(filename)
-	img = img.Adjust(0.9)
-	tess.SetImagePix(img.cPIX)
-
-	words := tess.Words()
-
-	d.AddPage(filename, *img, words)
 }
 
 func main() {
 
 	tessData := flag.String("tess-data", "/usr/share/tesseract-ocr/tessdata",
 		"Tesseract data directory")
-	tessLang := flag.String("tess-lang", "eng", "Tesseract language")
-	docSize := flag.String("size", "a4", "document size, e.g. A4 or 210x297mm")
+	tessLang := flag.String("tess-lang", "eng",
+		"Tesseract language")
+	docSize := flag.String("size", "a4",
+		"document size, e.g. A4 or 210x297mm")
+	force := flag.Bool("force", false, "overwrite output file if necessary")
+	imgContrast := flag.Float64("contrast", 0.5,
+		"automatic contrast amount (0: none, 1: max)")
+	imgFormat := flag.String("format", "jpg",
+		"format to use when storing images in PDF (jpg|png)")
 
 	flag.Parse()
 
@@ -114,11 +111,30 @@ func main() {
 		outfn = strings.TrimRight(outfn, ext) + ".pdf"
 	}
 
-	for _, fn := range files {
-		doc.AddPageFromFile(tess, fn)
+	openFlags := os.O_RDWR | os.O_CREATE
+	if *force {
+		openFlags |= os.O_TRUNC
+	} else {
+		openFlags |= os.O_EXCL
 	}
 
-	outfile, _ := os.Create(outfn)
-	doc.pdf.OutputAndClose(outfile)
+	outfile, err := os.OpenFile(outfn, openFlags, 0666)
 
+	if os.IsExist(err) {
+		fmt.Printf("File '%s' already exists. Use -force to overwrite.")
+		os.Exit(1)
+	} else {
+		fmt.Printf("Couldn't open '%s': %s", outfn, err)
+		os.Exit(1)
+	}
+
+	for _, fn := range files {
+		img := NewImageFromFile(fn)
+		img = img.Adjust(float32(*imgContrast))
+		tess.SetImagePix(img.cPIX)
+		words := tess.Words()
+		doc.AddPage(fn, *img, words, *imgFormat)
+	}
+
+	doc.pdf.OutputAndClose(outfile)
 }
