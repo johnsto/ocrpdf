@@ -1,6 +1,6 @@
-package main
+package internal
 
-// #cgo LDFLAGS: -L /usr/local/lib -ltesseract
+// #cgo LDFLAGS: -ltesseract
 // #include "tesseract/capi.h"
 // #include <stdlib.h>
 import "C"

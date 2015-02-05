@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	"code.google.com/p/gofpdf"
+
+	"bitbucket.org/johnsto/ocrpdf/internal"
 )
 
 type Document struct {
-	pdf         *gofpdf.Fpdf
+	*gofpdf.Fpdf
 	ocrLayerId  int
 	scanLayerId int
 }
@@ -23,14 +25,14 @@ func NewDocument(size string) *Document {
 	ocrLayerId := pdf.AddLayer("OCR", true)
 	scanLayerId := pdf.AddLayer("Scan", true)
 	return &Document{
-		pdf:         pdf,
+		Fpdf:        pdf,
 		ocrLayerId:  ocrLayerId,
 		scanLayerId: scanLayerId,
 	}
 }
 
-func (d *Document) AddPage(imagename string, image Image, words []Word, format string) error {
-	pdf := d.pdf
+func (d *Document) AddPage(imagename string, image internal.Image, words []internal.Word, format string) error {
+	pdf := d.Fpdf
 
 	pdf.AddPage()
 
@@ -47,7 +49,6 @@ func (d *Document) AddPage(imagename string, image Image, words []Word, format s
 	mx = w / iw
 	my = h / ih
 
-	pdf.SetFont("Arial", "B", 10)
 	pdf.Write(8, "This line belongs to layer 1.\n")
 
 	pdf.BeginLayer(d.ocrLayerId)
@@ -79,9 +80,23 @@ func main() {
 		"Tesseract data directory")
 	tessLang := flag.String("tess-lang", "eng",
 		"Tesseract language")
+
 	docSize := flag.String("size", "a4",
 		"document size, e.g. A4 or 210x297mm")
+	docTitle := flag.String("title", "", "document title")
+	docKeywords := flag.String("keywords", "",
+		"document keywords (space separated)")
+	docAuthor := flag.String("author", "", "document author")
+
+	compress := flag.Bool("compress", true, "compress document")
+
+	fontName := flag.String("font-name", "Arial", "OCR layer font")
+	fontStyle := flag.String("font-style", "",
+		"OCR layer font style, either 'B', 'I' or 'U' (or a combination)")
+	fontSize := flag.Float64("font-size", 10, "OCR layer font size")
+
 	force := flag.Bool("force", false, "overwrite output file if necessary")
+
 	imgContrast := flag.Float64("contrast", 0.5,
 		"automatic contrast amount (0: none, 1: max)")
 	imgFormat := flag.String("format", "jpg",
@@ -89,13 +104,18 @@ func main() {
 
 	flag.Parse()
 
-	tess, err := NewTess(*tessData, *tessLang)
+	tess, err := internal.NewTess(*tessData, *tessLang)
 	if err != nil {
 		fmt.Printf("Could not initialise Tesseract: %s\n", err)
 		os.Exit(1)
 	}
 
 	doc := NewDocument(*docSize)
+	doc.SetFont(*fontName, *fontStyle, *fontSize)
+	doc.SetTitle(*docTitle, true)
+	doc.SetKeywords(*docKeywords, true)
+	doc.SetAuthor(*docAuthor, true)
+	doc.SetCompression(*compress)
 
 	files := flag.Args()
 
@@ -121,20 +141,20 @@ func main() {
 	outfile, err := os.OpenFile(outfn, openFlags, 0666)
 
 	if os.IsExist(err) {
-		fmt.Printf("File '%s' already exists. Use -force to overwrite.")
+		fmt.Printf("Output file '%s' already exists. Use -force to overwrite.")
 		os.Exit(1)
 	} else {
-		fmt.Printf("Couldn't open '%s': %s", outfn, err)
+		fmt.Printf("Couldn't create output file '%s': %s", outfn, err)
 		os.Exit(1)
 	}
 
 	for _, fn := range files {
-		img := NewImageFromFile(fn)
+		img := internal.NewImageFromFile(fn)
 		img = img.Adjust(float32(*imgContrast))
-		tess.SetImagePix(img.cPIX)
+		tess.SetImagePix(img.CPIX())
 		words := tess.Words()
 		doc.AddPage(fn, *img, words, *imgFormat)
 	}
 
-	doc.pdf.OutputAndClose(outfile)
+	doc.OutputAndClose(outfile)
 }

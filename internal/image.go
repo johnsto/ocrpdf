@@ -1,10 +1,8 @@
-package main
+package internal
 
-/*
-#cgo LDFLAGS: -llept
-#include "leptonica/allheaders.h"
-#include <stdlib.h>
-*/
+// #cgo LDFLAGS: -llept
+// #include "leptonica/allheaders.h"
+// #include <stdlib.h>
 import "C"
 import (
 	"bytes"
@@ -36,6 +34,10 @@ type Image struct {
 	cPIX      *C.PIX
 	buf       *bytes.Buffer
 	pixFormat C.l_int32
+}
+
+func (i *Image) CPIX() *C.PIX {
+	return i.cPIX
 }
 
 func (i *Image) Close() {
