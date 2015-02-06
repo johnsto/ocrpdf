@@ -17,6 +17,7 @@ type Document struct {
 	*gofpdf.Fpdf
 	ocrLayerId  int
 	scanLayerId int
+	orientation string
 }
 
 func NewDocument(size string) *Document {
@@ -31,14 +32,42 @@ func NewDocument(size string) *Document {
 	}
 }
 
+func (d *Document) SetOrientation(orientation string) error {
+	o := strings.ToLower(orientation)
+	if o == "p" || o == "portrait" {
+		d.orientation = "P"
+		return nil
+	} else if o == "l" || o == "landscape" {
+		d.orientation = "L"
+		return nil
+	} else if o == "a" || o == "auto" {
+		d.orientation = "A"
+		return nil
+	} else {
+		return fmt.Errorf("Unknown orientation '%s'", orientation)
+	}
+}
+
 func (d *Document) AddPage(imagename string, image internal.Image, words []internal.Word, format string) error {
 	pdf := d.Fpdf
 
-	pdf.AddPage()
-
 	imageWidth, imageHeight, _ := image.Dimensions()
-	iw, ih := float64(imageWidth), float64(imageHeight)
 	w, h := pdf.GetPageSize()
+
+	// Add page with correct orientation
+	if d.orientation == "A" {
+		if imageWidth > imageHeight {
+			pdf.AddPageFormat("L", gofpdf.SizeType{w, h})
+			w, h = h, w
+		} else {
+			pdf.AddPageFormat("P", gofpdf.SizeType{w, h})
+		}
+	} else {
+		pdf.AddPageFormat(d.orientation, gofpdf.SizeType{w, h})
+	}
+
+	// Determine image scaling factor
+	iw, ih := float64(imageWidth), float64(imageHeight)
 	mx, my := 1.0, 1.0
 
 	if iw*h < ih*w {
@@ -51,6 +80,7 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 
 	pdf.Write(8, "This line belongs to layer 1.\n")
 
+	// Add words acquired from OCR as bottom layer
 	pdf.BeginLayer(d.ocrLayerId)
 	pdf.SetFont("Arial", "B", 10)
 	for _, word := range words {
@@ -62,10 +92,11 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 	}
 	pdf.EndLayer()
 
+	// Add image as top layer
 	pdf.BeginLayer(d.scanLayerId)
 	reader, err := image.Reader(format)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	pdf.RegisterImageReader(imagename, format, reader)
 	pdf.Image(imagename, 0, 0, w, h, false, format, 0, "")
@@ -87,6 +118,8 @@ func main() {
 	docKeywords := flag.String("keywords", "",
 		"document keywords (space separated)")
 	docAuthor := flag.String("author", "", "document author")
+	docOrientation := flag.String("orientation", "auto",
+		"document orientation (auto/portrait/landscape)")
 
 	compress := flag.Bool("compress", true, "compress document")
 
@@ -116,6 +149,7 @@ func main() {
 	doc.SetKeywords(*docKeywords, true)
 	doc.SetAuthor(*docAuthor, true)
 	doc.SetCompression(*compress)
+	doc.SetOrientation(*docOrientation)
 
 	files := flag.Args()
 
@@ -141,9 +175,10 @@ func main() {
 	outfile, err := os.OpenFile(outfn, openFlags, 0666)
 
 	if os.IsExist(err) {
-		fmt.Printf("Output file '%s' already exists. Use -force to overwrite.")
+		fmt.Printf("Output file '%s' already exists. Use -force to overwrite.",
+			outfn)
 		os.Exit(1)
-	} else {
+	} else if err != nil {
 		fmt.Printf("Couldn't create output file '%s': %s", outfn, err)
 		os.Exit(1)
 	}
@@ -153,7 +188,10 @@ func main() {
 		img = img.Adjust(float32(*imgContrast))
 		tess.SetImagePix(img.CPIX())
 		words := tess.Words()
-		doc.AddPage(fn, *img, words, *imgFormat)
+		err = doc.AddPage(fn, *img, words, *imgFormat)
+		if err != nil {
+			log.Fatalln(err)
+		}
 	}
 
 	doc.OutputAndClose(outfile)
