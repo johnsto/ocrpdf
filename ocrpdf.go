@@ -18,6 +18,8 @@ type Document struct {
 	ocrLayerId  int
 	scanLayerId int
 	orientation string
+	debug       bool
+	fitText     bool
 }
 
 func NewDocument(size string) *Document {
@@ -30,6 +32,10 @@ func NewDocument(size string) *Document {
 		ocrLayerId:  ocrLayerId,
 		scanLayerId: scanLayerId,
 	}
+}
+
+func (d *Document) SetTextFitting(enabled bool) {
+	d.fitText = enabled
 }
 
 func (d *Document) SetOrientation(orientation string) error {
@@ -78,28 +84,91 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 	mx = w / iw
 	my = h / ih
 
-	pdf.Write(8, "This line belongs to layer 1.\n")
-
-	// Add words acquired from OCR as bottom layer
-	pdf.BeginLayer(d.ocrLayerId)
-	for _, word := range words {
-		ww := float64(word.Width) * mx
-		wh := float64(word.Height) * my
-		_, _ = ww, wh
-		pdf.SetXY(float64(word.Left)*mx, float64(word.Top)*my)
-		pdf.Cell(ww, wh, word.Text)
+	addImageLayer := func() error {
+		// Add image as top layer
+		pdf.BeginLayer(d.scanLayerId)
+		reader, err := image.Reader(format)
+		if err != nil {
+			return err
+		}
+		pdf.SetXY(0, 0)
+		pdf.RegisterImageReader(imagename, format, reader)
+		if d.debug {
+			pdf.SetAlpha(0.5, "Normal")
+			defer pdf.SetAlpha(1.0, "Normal")
+		}
+		pdf.Image(imagename, 0, 0, w, h, false, format, 0, "")
+		pdf.EndLayer()
+		return nil
 	}
-	pdf.EndLayer()
 
-	// Add image as top layer
-	pdf.BeginLayer(d.scanLayerId)
-	reader, err := image.Reader(format)
-	if err != nil {
+	addTextLayer := func() {
+		// Add words acquired from OCR as bottom layer
+		pdf.SetCellMargin(0)
+		pdf.BeginLayer(d.ocrLayerId)
+		for _, word := range words {
+			x := float64(word.Left) * mx
+			y := float64(word.Top) * my
+			w := float64(word.Width) * mx
+			h := float64(word.Height) * my
+
+			// Scaling factors
+			sx, sy := 1.0, 1.0
+
+			// Get word dimensions at current font size
+			sw := pdf.GetStringWidth(word.Text)
+			_, sh := pdf.GetFontSize()
+
+			if d.fitText {
+				if sw == 0 {
+					sw = w
+				}
+
+				// Calculate scaling factor
+				sx = w / sw
+				sy = h / sh
+			}
+
+			if d.debug {
+				// Outline detected word area
+				pdf.SetDrawColor(255, 0, 0)
+				pdf.Rect(x, y, w, h, "D")
+			}
+
+			// Print word in area of original box
+			pdf.SetXY(x, y)
+			pdf.TransformBegin()
+			pdf.TransformScale(100*sx, 100*sy, x, y)
+			if d.debug {
+				// Highlight target area in green
+				pdf.SetAlpha(0.5, "Multiply")
+				pdf.SetFillColor(0, 255, 0)
+				pdf.Rect(x, y, sw, sh, "F")
+				pdf.SetAlpha(1.0, "Normal")
+			}
+			pdf.Write(sh, word.Text)
+			pdf.TransformEnd()
+		}
+		pdf.EndLayer()
+	}
+
+	if d.debug {
+		// Draw text on top of image
+		if err := addImageLayer(); err != nil {
+			return err
+		}
+		addTextLayer()
+	} else {
+		// Hide text below image
+		addTextLayer()
+		if err := addImageLayer(); err != nil {
+			return err
+		}
+	}
+
+	if err := pdf.Error(); err != nil {
 		return err
 	}
-	pdf.RegisterImageReader(imagename, format, reader)
-	pdf.Image(imagename, 0, 0, w, h, false, format, 0, "")
-	pdf.EndLayer()
 
 	return nil
 }
@@ -125,12 +194,16 @@ func main() {
 		"OCR layer font style, either 'B', 'I' or 'U' (or a combination)")
 	fontSize := flag.Float64("font-size", 10, "OCR layer font size")
 
+	textFitting := flag.Bool("fit-text", true, "Scale text to match OCR")
+
 	force := flag.Bool("force", false, "overwrite output file if necessary")
 
 	imgContrast := flag.Float64("contrast", 0.5,
 		"automatic contrast amount (0: none, 1: max)")
 	imgFormat := flag.String("format", "jpg",
 		"format to use when storing images in PDF (jpg|png)")
+
+	debug := flag.Bool("debug", false, "debug mode")
 
 	flag.Parse()
 
@@ -141,7 +214,9 @@ func main() {
 	}
 
 	doc := NewDocument(*docSize)
+	doc.debug = *debug
 	doc.SetFont(*fontName, *fontStyle, *fontSize)
+	doc.SetTextFitting(*textFitting)
 	doc.SetTitle(*docTitle, true)
 	doc.SetKeywords(*docKeywords, true)
 	doc.SetAuthor(*docAuthor, true)
