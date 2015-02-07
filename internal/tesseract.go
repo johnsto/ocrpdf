@@ -10,25 +10,29 @@ import (
 	"unsafe"
 )
 
-type Tess struct {
-	api *C.TessBaseAPI
-}
-
 type Word struct {
 	Text   string
 	Left   int
 	Right  int
 	Top    int
 	Bottom int
+	Width  int
+	Height int
 }
 
 func NewTess(datapath string, language string) (*Tess, error) {
 	api := C.TessBaseAPICreate()
 
-	cDatapath := C.CString(datapath)
+	var cDatapath *C.char
+	if datapath != "" {
+		cDatapath = C.CString(datapath)
+	}
 	defer C.free(unsafe.Pointer(cDatapath))
 
-	cLanguage := C.CString(language)
+	var cLanguage *C.char
+	if language != "" {
+		cLanguage = C.CString(language)
+	}
 	defer C.free(unsafe.Pointer(cLanguage))
 
 	res := C.TessBaseAPIInit3(api, cDatapath, cLanguage)
@@ -43,6 +47,10 @@ func NewTess(datapath string, language string) (*Tess, error) {
 	runtime.SetFinalizer(tess, (*Tess).delete)
 
 	return tess, nil
+}
+
+type Tess struct {
+	api *C.TessBaseAPI
 }
 
 func (t *Tess) delete() {
@@ -80,6 +88,8 @@ func (t *Tess) Words() []Word {
 				Right:  int(cRight),
 				Top:    int(cTop),
 				Bottom: int(cBottom),
+				Width:  int(cRight - cLeft),
+				Height: int(cBottom - cTop),
 			}
 
 			words = append(words, word)

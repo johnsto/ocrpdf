@@ -82,10 +82,9 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 
 	// Add words acquired from OCR as bottom layer
 	pdf.BeginLayer(d.ocrLayerId)
-	pdf.SetFont("Arial", "B", 10)
 	for _, word := range words {
-		ww := float64(word.Right-word.Left) * mx
-		wh := float64(word.Bottom-word.Top) * my
+		ww := float64(word.Width) * mx
+		wh := float64(word.Height) * my
 		_, _ = ww, wh
 		pdf.SetXY(float64(word.Left)*mx, float64(word.Top)*my)
 		pdf.Cell(ww, wh, word.Text)
@@ -107,10 +106,8 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 
 func main() {
 
-	tessData := flag.String("tess-data", "/usr/share/tesseract-ocr/tessdata",
-		"Tesseract data directory")
-	tessLang := flag.String("tess-lang", "eng",
-		"Tesseract language")
+	tessData := flag.String("tess-data", "", "Tesseract data directory")
+	tessLang := flag.String("tess-lang", "", "Tesseract language")
 
 	docSize := flag.String("size", "a4",
 		"document size, e.g. A4 or 210x297mm")

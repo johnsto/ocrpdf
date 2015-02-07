@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"runtime"
 	"strings"
 	"unsafe"
 )
@@ -24,10 +25,14 @@ func NewImageFromFile(filename string) *Image {
 		log.Fatalln("could not create PIX from given filename")
 	}
 
-	return &Image{
+	img := &Image{
 		cPIX:      cPIX,
 		pixFormat: C.getImpliedFileFormat(cFilename),
 	}
+
+	runtime.SetFinalizer(img, (*Image).delete)
+
+	return img
 }
 
 type Image struct {
@@ -36,14 +41,16 @@ type Image struct {
 	pixFormat C.l_int32
 }
 
-func (i *Image) CPIX() *C.PIX {
-	return i.cPIX
+func (i *Image) delete() {
+	if i.cPIX != nil {
+		C.pixDestroy(&i.cPIX)
+		C.free(unsafe.Pointer(i.cPIX))
+		i.cPIX = nil
+	}
 }
 
-func (i *Image) Close() {
-	C.pixDestroy(&i.cPIX)
-	C.free(unsafe.Pointer(i.cPIX))
-	i.cPIX = nil
+func (i *Image) CPIX() *C.PIX {
+	return i.cPIX
 }
 
 // Adjust improves the clarity and contrast of the image, generally reducing
