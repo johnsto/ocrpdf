@@ -8,9 +8,55 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alecthomas/kingpin"
+
 	"code.google.com/p/gofpdf"
 
 	"bitbucket.org/johnsto/ocrpdf/internal"
+)
+
+var (
+	app = kingpin.New("ocrpdf", "OCR and PDF")
+
+	outputFile = app.Flag("output", "output file name").String()
+
+	tessData = app.Flag("tess-data", "Tesseract data directory").String()
+	tessLang = app.Flag("tess-lang", "Tesseract language").String()
+
+	docSize     = app.Flag("size", "document size").Default("a4").String()
+	docTitle    = app.Flag("title", "document title").String()
+	docKeywords = app.Flag("keywords", "space-separated document keywords").
+			String()
+	docAuthor      = app.Flag("author", "document author").String()
+	docOrientation = app.Flag("orientation", "document orientation").
+			Default("auto").
+			Enum("auto", "portrait", "landscape")
+
+	compress = app.Flag("compress", "compress document").
+			Default("true").Bool()
+
+	fontName = app.Flag("font-name", "text font").
+			Default("Arial").String()
+	fontStyle = app.Flag("font-style", "font style, [B]old, [I]talic, [U]nderline").
+			PlaceHolder(" ").
+			Enum("B", "I", "U", "BI", "BU", "IU", "BIU")
+	fontSize = app.Flag("font-size", "OCR layer font size").
+			Default("10").Float()
+
+	textFitting = app.Flag("fit-text", "Scale text to match OCR").
+			Default("true").Bool()
+
+	force = app.Flag("force", "overwrite output file").Bool()
+
+	imgContrast = app.Flag("contrast", "automatic contrast amount").
+			Default("0.5").Float()
+	imgFormat = app.Flag("format", "format to use when storing images in PDF").
+			Enum("jpg", "png")
+
+	debug   = app.Flag("debug", "enable debug mode").Bool()
+	verbose = app.Flag("verbose", "enable verbose mode").Bool()
+
+	infile = app.Arg("input", "input image").Required().Strings()
 )
 
 type Document struct {
@@ -173,38 +219,7 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 }
 
 func main() {
-	tessData := flag.String("tess-data", "", "Tesseract data directory")
-	tessLang := flag.String("tess-lang", "", "Tesseract language")
-
-	docSize := flag.String("size", "a4",
-		"document size, e.g. A4 or 210x297mm")
-	docTitle := flag.String("title", "", "document title")
-	docKeywords := flag.String("keywords", "",
-		"document keywords (space separated)")
-	docAuthor := flag.String("author", "", "document author")
-	docOrientation := flag.String("orientation", "auto",
-		"document orientation (auto/portrait/landscape)")
-
-	compress := flag.Bool("compress", true, "compress document")
-
-	fontName := flag.String("font-name", "Arial", "OCR layer font")
-	fontStyle := flag.String("font-style", "",
-		"OCR layer font style, either 'B', 'I' or 'U' (or a combination)")
-	fontSize := flag.Float64("font-size", 10, "OCR layer font size")
-
-	textFitting := flag.Bool("fit-text", true, "Scale text to match OCR")
-
-	force := flag.Bool("force", false, "overwrite output file if necessary")
-
-	imgContrast := flag.Float64("contrast", 0.5,
-		"automatic contrast amount (0: none, 1: max)")
-	imgFormat := flag.String("format", "jpg",
-		"format to use when storing images in PDF (jpg|png)")
-
-	debug := flag.Bool("debug", false, "debug mode")
-	verbose := flag.Bool("verbose", false, "verbose mode")
-
-	flag.Parse()
+	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	if *verbose {
 		fmt.Println("Initialising Tesseract...")
