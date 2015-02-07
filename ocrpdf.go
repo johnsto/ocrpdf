@@ -120,11 +120,10 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 			_, sh := pdf.GetFontSize()
 
 			if d.fitText {
+				// Calculate scaling factor
 				if sw == 0 {
 					sw = w
 				}
-
-				// Calculate scaling factor
 				sx = w / sw
 				sy = h / sh
 			}
@@ -174,7 +173,6 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 }
 
 func main() {
-
 	tessData := flag.String("tess-data", "", "Tesseract data directory")
 	tessLang := flag.String("tess-lang", "", "Tesseract language")
 
@@ -204,9 +202,13 @@ func main() {
 		"format to use when storing images in PDF (jpg|png)")
 
 	debug := flag.Bool("debug", false, "debug mode")
+	verbose := flag.Bool("verbose", false, "verbose mode")
 
 	flag.Parse()
 
+	if *verbose {
+		fmt.Println("Initialising Tesseract...")
+	}
 	tess, err := internal.NewTess(*tessData, *tessLang)
 	if err != nil {
 		fmt.Printf("Could not initialise Tesseract: %s\n", err)
@@ -231,10 +233,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// When only one file is specified, output to a PDF of the same name
 	outfn := files[0]
 	if len(files) == 1 {
 		ext := filepath.Ext(outfn)
 		outfn = strings.TrimRight(outfn, ext) + ".pdf"
+	}
+
+	if *verbose {
+		fmt.Printf("Using '%s' as output file.\n", outfn)
 	}
 
 	openFlags := os.O_RDWR | os.O_CREATE
@@ -255,16 +262,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, fn := range files {
+	// Iterate through each filename specified, adding a page for each
+	for i, fn := range files {
+		no := i + 1
+		if *verbose {
+			fmt.Printf("[P%d] Reading '%s'...\n", no, fn)
+		}
 		img := internal.NewImageFromFile(fn)
 		img = img.Adjust(float32(*imgContrast))
 		tess.SetImagePix(img.CPIX())
+		if *verbose {
+			fmt.Printf("[P%d] Recognising...", no)
+		}
 		words := tess.Words()
+		if *verbose {
+			fmt.Printf(" %d words found.\n", len(words))
+			fmt.Printf("[P%d] Adding page\n", no)
+		}
 		err = doc.AddPage(fn, *img, words, *imgFormat)
 		if err != nil {
 			log.Fatalln(err)
 		}
 	}
 
+	if *verbose {
+		fmt.Printf("Writing output to '%s'...\n", outfn)
+	}
 	doc.OutputAndClose(outfile)
 }
