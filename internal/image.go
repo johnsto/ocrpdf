@@ -1,5 +1,7 @@
 package internal
 
+// Based in part on code from https://github.com/GeertJohan/go.leptonica
+
 // #cgo LDFLAGS: -llept
 // #include "leptonica/allheaders.h"
 // #include <stdlib.h>

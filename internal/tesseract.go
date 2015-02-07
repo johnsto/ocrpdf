@@ -1,5 +1,7 @@
 package internal
 
+// Based in part on code from https://github.com/GeertJohan/go.tesseract
+
 // #cgo LDFLAGS: -ltesseract
 // #include "tesseract/capi.h"
 // #include <stdlib.h>
