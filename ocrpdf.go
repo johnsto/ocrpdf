@@ -58,7 +58,6 @@ var (
 func init() {
 	app.Flag("debug", "enable debug mode").Short('d').BoolVar(&debug)
 	app.Flag("verbose", "enable verbose mode").Short('v').BoolVar(&verbose)
-
 }
 
 func main() {
