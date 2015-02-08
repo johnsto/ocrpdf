@@ -16,7 +16,7 @@ var (
 	debug   bool = false
 	verbose bool = false
 
-	app = kingpin.New("ocrpdf", "OCR and PDF")
+	app = kingpin.New("ocrpdf", "Converts scanned documents into searchable PDFs")
 
 	output = app.Flag("output", "output file name").Short('o').String()
 
@@ -28,7 +28,9 @@ var (
 	docTitle    = app.Flag("title", "document title").Short('t').String()
 	docKeywords = app.Flag("keywords", "space-separated document keywords").
 			Short('t').String()
-	docAuthor      = app.Flag("author", "document author").Short('o').String()
+	docAuthor  = app.Flag("author", "document author").Short('a').String()
+	docCreator = app.Flag("creator", "document creator").
+			Default("ocrpdf").String()
 	docOrientation = app.Flag("orientation", "document orientation").
 			Default("auto").Short('r').Enum("auto", "portrait", "landscape")
 
