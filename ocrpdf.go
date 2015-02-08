@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,22 +17,22 @@ import (
 var (
 	app = kingpin.New("ocrpdf", "OCR and PDF")
 
-	outputFile = app.Flag("output", "output file name").String()
+	output = app.Flag("output", "output file name").Short('o').String()
 
 	tessData = app.Flag("tess-data", "Tesseract data directory").String()
 	tessLang = app.Flag("tess-lang", "Tesseract language").String()
 
-	docSize     = app.Flag("size", "document size").Default("a4").String()
-	docTitle    = app.Flag("title", "document title").String()
+	docSize = app.Flag("size", "document size").
+		Short('s').Default("a4").String()
+	docTitle    = app.Flag("title", "document title").Short('t').String()
 	docKeywords = app.Flag("keywords", "space-separated document keywords").
-			String()
-	docAuthor      = app.Flag("author", "document author").String()
+			Short('t').String()
+	docAuthor      = app.Flag("author", "document author").Short('o').String()
 	docOrientation = app.Flag("orientation", "document orientation").
-			Default("auto").
-			Enum("auto", "portrait", "landscape")
+			Default("auto").Short('r').Enum("auto", "portrait", "landscape")
 
 	compress = app.Flag("compress", "compress document").
-			Default("true").Bool()
+			Default("true").Short('c').Bool()
 
 	fontName = app.Flag("font-name", "text font").
 			Default("Arial").String()
@@ -42,30 +41,41 @@ var (
 			Enum("B", "I", "U", "BI", "BU", "IU", "BIU")
 	fontSize = app.Flag("font-size", "OCR layer font size").
 			Default("10").Float()
+	textScaling = app.Flag("scaling", "Scale text to match word boundaries").
+			Default("match").Enum("off", "contain", "match")
 
-	textFitting = app.Flag("fit-text", "Scale text to match OCR").
-			Default("true").Bool()
-
-	force = app.Flag("force", "overwrite output file").Bool()
+	force = app.Flag("force", "overwrite output file").Short('f').Bool()
 
 	imgContrast = app.Flag("contrast", "automatic contrast amount").
 			Default("0.5").Float()
 	imgFormat = app.Flag("format", "format to use when storing images in PDF").
-			Enum("jpg", "png")
+			Default("auto").Enum("auto", "jpg", "png")
 
-	debug   = app.Flag("debug", "enable debug mode").Bool()
-	verbose = app.Flag("verbose", "enable verbose mode").Bool()
+	debug   = app.Flag("debug", "enable debug mode").Short('d').Bool()
+	verbose = app.Flag("verbose", "enable verbose mode").Short('v').Bool()
 
-	infile = app.Arg("input", "input image").Required().Strings()
+	input = app.Arg("input", "input image").Required().Strings()
+)
+
+type Orientation string
+type TextScaling string
+
+const (
+	AutoOrientation      Orientation = "auto"
+	PortraitOrientation              = "portrait"
+	LandscapeOrientation             = "landscape"
+	NoTextScaling        TextScaling = "off"
+	ContainTextScaling               = "contain"
+	MatchTextScaling                 = "match"
 )
 
 type Document struct {
 	*gofpdf.Fpdf
 	ocrLayerId  int
 	scanLayerId int
-	orientation string
 	debug       bool
-	fitText     bool
+	orientation Orientation
+	textScaling TextScaling
 }
 
 func NewDocument(size string) *Document {
@@ -80,8 +90,8 @@ func NewDocument(size string) *Document {
 	}
 }
 
-func (d *Document) SetTextFitting(enabled bool) {
-	d.fitText = enabled
+func (d *Document) SetTextScaling(mode TextScaling) {
+	d.textScaling = mode
 }
 
 func (d *Document) SetOrientation(orientation string) error {
@@ -115,7 +125,7 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 			pdf.AddPageFormat("P", gofpdf.SizeType{w, h})
 		}
 	} else {
-		pdf.AddPageFormat(d.orientation, gofpdf.SizeType{w, h})
+		pdf.AddPageFormat(string(d.orientation), gofpdf.SizeType{w, h})
 	}
 
 	// Determine image scaling factor
@@ -133,17 +143,17 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 	addImageLayer := func() error {
 		// Add image as top layer
 		pdf.BeginLayer(d.scanLayerId)
-		reader, err := image.Reader(format)
+		reader, imageFormat, err := image.Reader(format)
 		if err != nil {
 			return err
 		}
 		pdf.SetXY(0, 0)
-		pdf.RegisterImageReader(imagename, format, reader)
+		pdf.RegisterImageReader(imagename, imageFormat, reader)
 		if d.debug {
 			pdf.SetAlpha(0.5, "Normal")
 			defer pdf.SetAlpha(1.0, "Normal")
 		}
-		pdf.Image(imagename, 0, 0, w, h, false, format, 0, "")
+		pdf.Image(imagename, 0, 0, w, h, false, imageFormat, 0, "")
 		pdf.EndLayer()
 		return nil
 	}
@@ -165,8 +175,21 @@ func (d *Document) AddPage(imagename string, image internal.Image, words []inter
 			sw := pdf.GetStringWidth(word.Text)
 			_, sh := pdf.GetFontSize()
 
-			if d.fitText {
-				// Calculate scaling factor
+			switch d.textScaling {
+			case ContainTextScaling:
+				// Text expands linearly until contained by word boundary
+				if sw == 0 {
+					sw = w
+				}
+				if sw*h > sh*w {
+					sx = w / sw
+					sy = sx
+				} else {
+					sx = h / sh
+					sy = sx
+				}
+			case MatchTextScaling:
+				// Text has exactly same shape as word boundary
 				if sw == 0 {
 					sw = w
 				}
@@ -233,14 +256,14 @@ func main() {
 	doc := NewDocument(*docSize)
 	doc.debug = *debug
 	doc.SetFont(*fontName, *fontStyle, *fontSize)
-	doc.SetTextFitting(*textFitting)
+	doc.SetTextScaling(TextScaling(*textScaling))
 	doc.SetTitle(*docTitle, true)
 	doc.SetKeywords(*docKeywords, true)
 	doc.SetAuthor(*docAuthor, true)
 	doc.SetCompression(*compress)
 	doc.SetOrientation(*docOrientation)
 
-	files := flag.Args()
+	files := *input
 
 	if len(files) == 0 {
 		fmt.Printf("No file(s) specified!\n")
@@ -249,8 +272,9 @@ func main() {
 	}
 
 	// When only one file is specified, output to a PDF of the same name
-	outfn := files[0]
-	if len(files) == 1 {
+	outfn := *output
+	if outfn == "" {
+		outfn = files[0]
 		ext := filepath.Ext(outfn)
 		outfn = strings.TrimRight(outfn, ext) + ".pdf"
 	}
@@ -296,7 +320,8 @@ func main() {
 		}
 		err = doc.AddPage(fn, *img, words, *imgFormat)
 		if err != nil {
-			log.Fatalln(err)
+			fmt.Println(err)
+			os.Exit(1)
 		}
 	}
 

@@ -8,10 +8,8 @@ package internal
 import "C"
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"runtime"
-	"strings"
 	"unsafe"
 )
 
@@ -58,6 +56,11 @@ func (i *Image) CPIX() *C.PIX {
 // Adjust improves the clarity and contrast of the image, generally reducing
 // scanning artifacts.
 func (i *Image) Adjust(threshold float32) *Image {
+	depth := C.pixGetDepth(i.cPIX)
+	if depth == 1 {
+		// Can't improve contrast on 1BPP images!
+		return i
+	}
 	result := C.pixContrastTRC(i.cPIX, i.cPIX, C.l_float32(threshold))
 	return &Image{
 		cPIX: result,
@@ -91,19 +94,24 @@ func (i Image) FormatString() string {
 
 // Reader returns an io.Reader for the image data. If format is not specified,
 // the reader will produce image data in the original image format. Otherwise,
-// `format` must be either "jpg" or "png"
-func (i Image) Reader(format string) (*bytes.Buffer, error) {
+// `format` must be either "auto", "jpg" or "png"
+func (i Image) Reader(format string) (*bytes.Buffer, string, error) {
 	pixFormat := i.pixFormat
-	if format != "" {
+	switch format {
+	case "png":
+		pixFormat = C.IFF_PNG
+	case "jpg":
+		pixFormat = C.IFF_JFIF_JPEG
+	case "auto":
 		// Determine pix format
-		var ok bool
-		pixFormat, ok = map[string]C.l_int32{
-			"jpg":  C.IFF_JFIF_JPEG,
-			"jpeg": C.IFF_JFIF_JPEG,
-			"png":  C.IFF_PNG,
-		}[strings.ToLower(format)]
-		if !ok {
-			return nil, fmt.Errorf("Unknown or unsupported format '%s'", format)
+		if pixFormat == C.IFF_PNG {
+			format = "png"
+		} else if pixFormat == C.IFF_JFIF_JPEG {
+			format = "jpg"
+		} else {
+			// Choose a better format... for now we'll always use PNG
+			pixFormat = C.IFF_PNG
+			format = "png"
 		}
 	}
 
@@ -115,5 +123,5 @@ func (i Image) Reader(format string) (*bytes.Buffer, error) {
 	defer C.free(unsafe.Pointer(data))
 	buf := C.GoBytes(unsafe.Pointer(data), C.int(size*int(length)))
 
-	return bytes.NewBuffer(buf), nil
+	return bytes.NewBuffer(buf), format, nil
 }
