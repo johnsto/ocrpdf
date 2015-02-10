@@ -48,11 +48,13 @@ You can also specify a document size, output filename, document title, enable co
            --compress \
            taxes1.jpg taxes2.jpg taxes3.jpg
 
+See `--help` for a listing of all available options.
+
 Automatic contrast enhancement to improve the legibility of the text is performed by default, you can disable this with the `--contrast=0` flag.
 
 ## Image support
 
-Reading JPEGs, PNGs and TIFs is supported, plus any other formats that Leptonica supports. Images in outputted PDF will be either JPEG or PNG, based on the input format of the respective image. You can force a specific output format using the `--format` parameter.
+All images that Leptonica supports can be read, including TIF, JPEG and PNG. However, images in the saved PDF will be either JPEG or PNG, based on the format of the respective image. You can force a specific output format using the `--format` parameter.
 
 ## PDF Structure
 
