@@ -6,9 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"bitbucket.org/johnsto/ocrpdf"
 	"github.com/alecthomas/kingpin"
-
-	"bitbucket.org/johnsto/ocrpdf/internal"
 )
 
 var (
@@ -57,17 +56,17 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	logv("Initialising Tesseract...")
-	tess, err := internal.NewTess(*tessData, *tessLang)
+	tess, err := ocrpdf.NewTess(*tessData, *tessLang)
 
 	if err != nil {
 		fmt.Errorf("Could not initialise Tesseract: %s\n", err)
 		os.Exit(1)
 	}
 
-	doc := NewDocument(*docSize)
-	doc.debug = debug
+	doc := ocrpdf.NewDocument(*docSize)
+	doc.SetDebug(debug)
 	doc.SetFont(*fontName, *fontStyle, *fontSize)
-	doc.SetTextScaling(TextScaling(*textScaling))
+	doc.SetTextScaling(ocrpdf.TextScaling(*textScaling))
 	doc.SetTitle(*docTitle, true)
 	doc.SetSubject(*docSubject, true)
 	doc.SetKeywords(*docKeywords, true)
@@ -109,7 +108,7 @@ func main() {
 		pageno := i + 1
 
 		logvf("[P%d] Reading '%s'...\n", pageno, fn)
-		img := internal.NewImageFromFile(fn)
+		img := ocrpdf.NewImageFromFile(fn)
 		img = img.Adjust(float32(*imgContrast))
 		tess.SetImagePix(img.CPIX())
 

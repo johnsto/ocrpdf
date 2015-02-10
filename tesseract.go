@@ -1,4 +1,4 @@
-package internal
+package ocrpdf
 
 // Based in part on code from https://github.com/GeertJohan/go.tesseract
 
