@@ -16,7 +16,7 @@ var (
 
 	app = kingpin.New("ocrpdf", "Converts scanned documents into searchable PDFs")
 
-	input  = app.Arg("input", "input image filename(s)").Required().Strings()
+	files  = app.Arg("files", "filename(s)").Required().Strings()
 	output = app.Flag("output", "output filename").Short('o').String()
 	force  = app.Flag("force", "overwrite output file").Short('f').Bool()
 
@@ -72,7 +72,7 @@ func main() {
 	tess, err := ocrpdf.NewTess(*tessData, *tessLang)
 
 	if err != nil {
-		fmt.Errorf("could not initialise Tesseract: %s\n", err)
+		logef("could not initialise Tesseract: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -87,14 +87,34 @@ func main() {
 	doc.SetCompression(*docCompress)
 	doc.SetOrientation(ocrpdf.Orientation(*docOrientation))
 
-	files := *input
-
-	// When only one file is specified, output to a PDF of the same name
 	outfn := *output
+	infns := *files
 	if outfn == "" {
-		outfn = files[0]
-		ext := filepath.Ext(outfn)
-		outfn = strings.TrimRight(outfn, ext) + ".pdf"
+		// Search input files for a .pdf file
+		pos := -1
+		for i, fn := range infns {
+			ext := strings.ToLower(filepath.Ext(fn))
+			if ext == ".pdf" {
+				if pos >= 0 {
+					// two output files specified?
+					logef("Multiple .pdf output files specified. " +
+						"Use -o to specify output file explicitly.\n")
+					os.Exit(1)
+				}
+				pos = i
+				outfn = fn
+			}
+		}
+
+		if pos >= 0 {
+			// Remove output file from list of input files
+			infns = append(infns[:pos], infns[pos+1:]...)
+		} else {
+			// No .pdf file on command line, so use name of first input instead
+			outfn = infns[0]
+			ext := filepath.Ext(outfn)
+			outfn = strings.TrimRight(outfn, ext) + ".pdf"
+		}
 	}
 
 	logvf("Using '%s' as output file.\n", outfn)
@@ -109,19 +129,23 @@ func main() {
 	outfile, err := os.OpenFile(outfn, openFlags, 0666)
 
 	if os.IsExist(err) {
-		fmt.Printf("Output file '%s' already exists. Use -force to overwrite.\n", outfn)
+		logef("Output file '%s' already exists. Use -force to overwrite.\n", outfn)
 		os.Exit(1)
 	} else if err != nil {
-		fmt.Printf("Couldn't create output file '%s': %s\n", outfn, err)
+		logef("Couldn't create output file '%s': %s\n", outfn, err)
 		os.Exit(1)
 	}
 
 	// Iterate through each filename specified, adding a page for each
-	for i, fn := range files {
+	for i, fn := range infns {
 		pageno := i + 1
 
 		logvf("[P%d] Reading '%s'...\n", pageno, fn)
-		img := ocrpdf.NewImageFromFile(fn)
+		img, err := ocrpdf.NewImageFromFile(fn)
+		if err != nil {
+			logef("Unable to read image from file '%s'\n", fn)
+			os.Exit(1)
+		}
 		img = img.Adjust(float32(*imgContrast))
 		tess.SetImagePix(img.CPIX())
 

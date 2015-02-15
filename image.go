@@ -8,21 +8,21 @@ package ocrpdf
 import "C"
 import (
 	"bytes"
-	"log"
+	"fmt"
 	"runtime"
 	"unsafe"
 )
 
 // NewImageFromFile creates and returns a new image loaded from the given
 // file path.
-func NewImageFromFile(filename string) *Image {
+func NewImageFromFile(filename string) (*Image, error) {
 	cFilename := C.CString(filename)
 	defer C.free(unsafe.Pointer(cFilename))
 
 	// create new PIX
 	cPIX := C.pixRead(cFilename)
 	if cPIX == nil {
-		log.Fatalln("could not create PIX from given filename")
+		return nil, fmt.Errorf("could not read image from '%s'", filename)
 	}
 
 	img := &Image{
@@ -32,7 +32,7 @@ func NewImageFromFile(filename string) *Image {
 
 	runtime.SetFinalizer(img, (*Image).delete)
 
-	return img
+	return img, nil
 }
 
 type Image struct {

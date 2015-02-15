@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 func logv(a ...interface{}) {
 	if verbose {
@@ -23,4 +26,12 @@ func logdf(format string, a ...interface{}) {
 	if debug {
 		fmt.Printf(format, a...)
 	}
+}
+
+func loge(a ...interface{}) {
+	fmt.Fprintln(os.Stderr, a...)
+}
+
+func logef(format string, a ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, a...)
 }
