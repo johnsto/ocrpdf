@@ -1,8 +1,8 @@
-# ocrpdf
+# goscan2pdf
 
 *A tool to convert scanned documents into searchable PDFs*
 
-`ocrpdf` recognises and extracts text from scanned documents then combines them into (generally) searchable PDFs that look like the original document. It uses the open source [Tesseract](https://tesseract-ocr.googlecode.com) library for OCR, [Leptonica](http://leptonica.com) for image manipiulation, [gofpdf](code.google.com/p/gofpdf) for document generation, and [kingpin](https://github.com/alecthomas/kingpin) for CLI support.
+`goscan2pdf` recognises and extracts text from scanned documents then combines them into (generally) searchable PDFs that look like the original document. It uses the open source [Tesseract](https://tesseract-ocr.googlecode.com) library for OCR, [Leptonica](http://leptonica.com) for image manipiulation, [gofpdf](code.google.com/p/gofpdf) for document generation, and [kingpin](https://github.com/alecthomas/kingpin) for CLI support.
 
 ## I demand a GUI!
 
@@ -10,7 +10,7 @@ You're probably better off with [`gscan2pdf`](http://gscan2pdf.sourceforge.net/)
 
 ## Installation
 
-Use `go install bitbucket.org/johnsto/ocrpdf` to install `ocrpdf`
+Use `go install bitbucket.org/johnsto/ocrpdf/goscan2pdf` to install the `goscan2pdf` tool.
 
 Both the Leptonica and Tesseract libraries must be installed.
 
@@ -36,17 +36,17 @@ Ensure that you have the Tesseract 3.03.03 library and data files installed.
 
 Converting a scanned image is as simple as:
 
-`ocrpdf scan.jpg`
+`goscan2pdf scan.jpg`
 
-By default, `ocrpdf` will take the filename name of the first input scan as the output document name, in this case, `scan.pdf`.
+By default, `goscan2pdf` will take the filename name of the first input scan as the output document name, in this case, `scan.pdf`.
 
-You can also specify a document size, output filename, document title, enable compression and specify multiple pages:
+You can also specify a document size, document title, enable compression, multiple pages and the output filename:
 
-    ocrpdf -s letter \
-           -o taxes.pdf \
-           -t "2015 Taxes" \
-           --compress \
-           taxes1.jpg taxes2.jpg taxes3.jpg
+    goscan2pdf -s letter \
+    	       -t "2015 Taxes" \
+               --compress \
+               taxes1.jpg taxes2.jpg taxes3.jpg \
+	       taxes.pdf
 
 See `--help` for a listing of all available options.
 
