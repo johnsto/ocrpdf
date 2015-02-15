@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"bitbucket.org/johnsto/ocrpdf"
 	"github.com/alecthomas/kingpin"
+	"github.com/johnsto/ocrpdf"
 )
 
 var (

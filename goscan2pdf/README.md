@@ -10,7 +10,7 @@ You're probably better off with [`gscan2pdf`](http://gscan2pdf.sourceforge.net/)
 
 ## Installation
 
-Use `go install bitbucket.org/johnsto/ocrpdf/goscan2pdf` to install the `goscan2pdf` tool.
+Use `go install github.com/johnsto/ocrpdf/goscan2pdf` to install the `goscan2pdf` tool.
 
 Both the Leptonica and Tesseract libraries must be installed.
 
