@@ -2,22 +2,37 @@ package ocrpdf
 
 import "code.google.com/p/gofpdf"
 
+// Orientation defines page orientations
 type Orientation string
-type TextScaling string
 
+// Different orientation modes.
 const (
+	// AutoOrientation chooses orientation based on longest edge
 	AutoOrientation      Orientation = "auto"
 	PortraitOrientation              = "portrait"
 	LandscapeOrientation             = "landscape"
-	NoTextScaling        TextScaling = "off"
-	ContainTextScaling               = "contain"
-	MatchTextScaling                 = "match"
 )
 
+// TextScaling defines text scaling modes
+type TextScaling string
+
+const (
+	// NoTextScaling specifies that no text scaling will be performed.
+	NoTextScaling TextScaling = "off"
+	// ContainTextScaling fits the text to the detected word boundary,
+	// whilst maintaining the correct aspect ratio for the font.
+	ContainTextScaling = "contain"
+	// MatchTextScaling fits the text to the detected word boundary exactly,
+	// scaling the font if required.
+	MatchTextScaling = "match"
+)
+
+// Document is a wrapped version of gofpdf.Fpd which adds additional methods
+// for constructing documents with OCR-generated text.
 type Document struct {
 	*gofpdf.Fpdf
-	ocrLayerId  int
-	scanLayerId int
+	ocrLayerID  int
+	scanLayerID int
 	debug       bool
 	orientation Orientation
 	textScaling TextScaling
@@ -28,12 +43,12 @@ func NewDocument(size string) *Document {
 	pdf := gofpdf.New("P", "mm", size, "")
 	pdf.SetAutoPageBreak(false, 0)
 	pdf.SetCellMargin(0)
-	ocrLayerId := pdf.AddLayer("OCR", true)
-	scanLayerId := pdf.AddLayer("Scan", true)
+	ocrLayerID := pdf.AddLayer("OCR", true)
+	scanLayerID := pdf.AddLayer("Scan", true)
 	return &Document{
 		Fpdf:        pdf,
-		ocrLayerId:  ocrLayerId,
-		scanLayerId: scanLayerId,
+		ocrLayerID:  ocrLayerID,
+		scanLayerID: scanLayerID,
 	}
 }
 
@@ -54,38 +69,40 @@ func (d *Document) SetDebug(enabled bool) {
 	d.debug = enabled
 }
 
-// addImageLayer adds the specified image to the page, embedding it using
-// the given format.
-func (d *Document) addImageLayer(image Image, name string, format string, w, h float64) error {
+// AddImageLayer adds the specified image to the page, embedding it using
+// the given format, and appear at the specified size (in page units).
+func (d *Document) AddImageLayer(image Image, imagename string,
+	format string, w, h float64) {
 	pdf := d.Fpdf
 
-	// Add image as top layer
-	pdf.BeginLayer(d.scanLayerId)
+	pdf.BeginLayer(d.scanLayerID)
+
+	// Register image
 	reader, imageFormat, err := image.Reader(format)
 	if err != nil {
-		return err
+		pdf.SetError(err)
+		return
 	}
-	pdf.SetXY(0, 0)
-	pdf.RegisterImageReader(name, imageFormat, reader)
+	pdf.RegisterImageReader(imagename, imageFormat, reader)
+
 	if d.debug {
+		// Make scan semi-transparent in debug mode so it's easier to see text
 		pdf.SetAlpha(0.5, "Normal")
 		defer pdf.SetAlpha(1.0, "Normal")
 	}
-	pdf.Image(name, 0, 0, w, h, false, imageFormat, 0, "")
+
+	pdf.SetXY(0, 0)
+	pdf.Image(imagename, 0, 0, w, h, false, imageFormat, 0, "")
+
 	pdf.EndLayer()
-	return nil
 }
 
-// addTextLayer adds the specified words to the page, scaling the X/Y
-// coordinates accordingly.
-func (d *Document) addTextLayer(words []Word, mx, my float64) {
+// AddWords adds the specified words to the page.
+func (d *Document) AddWords(words []Word) {
 	pdf := d.Fpdf
-	pdf.BeginLayer(d.ocrLayerId)
 	for _, word := range words {
-		x := float64(word.Left) * mx
-		y := float64(word.Top) * my
-		w := float64(word.Width) * mx
-		h := float64(word.Height) * my
+		x, y := float64(word.Left), float64(word.Top)
+		w, h := float64(word.Width), float64(word.Height)
 
 		// Scaling factors
 		sx, sy := 1.0, 1.0
@@ -136,56 +153,69 @@ func (d *Document) addTextLayer(words []Word, mx, my float64) {
 		pdf.Write(sh, word.Text)
 		pdf.TransformEnd()
 	}
-	pdf.EndLayer()
 }
 
-// AddPage appends the given image to the document, annotating the document
-// with the detected words. Ensure `name` is unique for each distinct image.
-func (d *Document) AddPage(name string, image Image, words []Word, format string) error {
-	pdf := d.Fpdf
+// GetPageConfiguration returns a suitable page size and orientation to
+// contain an image of the specified dimensions.
+func (d *Document) GetPageConfiguration(iw, ih float64) (
+	w, h float64, orientation Orientation) {
 
-	imageWidth, imageHeight, _ := image.Dimensions()
-	w, h := pdf.GetPageSize()
+	w, h = d.GetPageSize()
 
 	// Add page with correct orientation
-	if d.orientation == AutoOrientation {
-		if imageWidth > imageHeight {
-			pdf.AddPageFormat(LandscapeOrientation, gofpdf.SizeType{w, h})
+	orientation = d.orientation
+	if orientation == AutoOrientation {
+		if iw > ih {
 			w, h = h, w
+			orientation = LandscapeOrientation
 		} else {
-			pdf.AddPageFormat(PortraitOrientation, gofpdf.SizeType{w, h})
+			orientation = PortraitOrientation
 		}
-	} else {
-		pdf.AddPageFormat(string(d.orientation), gofpdf.SizeType{w, h})
 	}
-
-	// Determine image scaling factor
-	iw, ih := float64(imageWidth), float64(imageHeight)
-	mx, my := 1.0, 1.0
 
 	if iw*h < ih*w {
 		w = h * iw / ih
 	} else {
 		h = w * ih / iw
 	}
-	mx = w / iw
-	my = h / ih
+
+	return w, h, orientation
+}
+
+// AddPage appends the given image to the document, annotating the document
+// with the detected words. Ensure `name` is unique for each distinct image.
+func (d *Document) AddPage(image Image, imagename string,
+	words []Word, format string) error {
+	iw, ih, _ := image.Dimensions()
+	w, h, orientation := d.GetPageConfiguration(float64(iw), float64(ih))
+
+	d.AddPageFormat(string(orientation), gofpdf.SizeType{Wd: w, Ht: h})
+
+	addImageLayer := func() {
+		d.AddImageLayer(image, imagename, format, w, h)
+	}
+
+	addWordsLayer := func() {
+		mx, my := w/float64(iw), h/float64(ih)
+		d.BeginLayer(d.ocrLayerID)
+		d.TransformBegin()
+		d.TransformScale(100*mx, 100*my, 0, 0)
+		d.AddWords(words)
+		d.TransformEnd()
+		d.EndLayer()
+	}
 
 	if d.debug {
 		// Draw text on top of image
-		if err := d.addImageLayer(image, name, format, w, h); err != nil {
-			return err
-		}
-		d.addTextLayer(words, mx, my)
+		addImageLayer()
+		addWordsLayer()
 	} else {
 		// Hide text below image
-		d.addTextLayer(words, mx, my)
-		if err := d.addImageLayer(image, name, format, w, h); err != nil {
-			return err
-		}
+		addWordsLayer()
+		addImageLayer()
 	}
 
-	if err := pdf.Error(); err != nil {
+	if err := d.Error(); err != nil {
 		return err
 	}
 
