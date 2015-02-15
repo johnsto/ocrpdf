@@ -150,7 +150,8 @@ func (d *Document) AddWords(words []Word) {
 			pdf.Rect(x, y, sw, sh, "F")
 			pdf.SetAlpha(1.0, "Normal")
 		}
-		pdf.Write(sh, word.Text)
+
+		pdf.Cell(sw, sh, word.Text)
 		pdf.TransformEnd()
 	}
 }
