@@ -1,6 +1,6 @@
 package ocrpdf
 
-import "code.google.com/p/gofpdf"
+import "github.com/jung-kurt/gofpdf"
 
 // Orientation defines page orientations
 type Orientation string
