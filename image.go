@@ -92,36 +92,61 @@ func (i Image) FormatString() string {
 	}[i.pixFormat]
 }
 
-// Reader returns an io.Reader for the image data. If format is not specified,
-// the reader will produce image data in the original image format. Otherwise,
-// `format` must be either "auto", "jpg" or "png"
-func (i Image) Reader(format string) (*bytes.Buffer, string, error) {
-	pixFormat := i.pixFormat
-	switch format {
-	case "png":
-		pixFormat = C.IFF_PNG
-	case "jpg":
-		pixFormat = C.IFF_JFIF_JPEG
-	case "auto":
-		// Determine pix format
-		if pixFormat == C.IFF_PNG {
-			format = "png"
-		} else if pixFormat == C.IFF_JFIF_JPEG {
-			format = "jpg"
-		} else {
-			// Choose a better format... for now we'll always use PNG
-			pixFormat = C.IFF_PNG
-			format = "png"
-		}
+// ReaderJPEG returns an io.Reader for the image data, returning a compressed
+// JPEG of the specified quality (0-100).
+func (i Image) ReaderJPEG(quality int, progressive bool) (*bytes.Buffer, error) {
+	if quality < 0 || quality > 100 {
+		return nil, fmt.Errorf("quality %d exeeds range 0-100", quality)
 	}
 
 	var data *C.l_uint8
 	var length C.size_t
 	size := int(unsafe.Sizeof(*data))
 
-	C.pixWriteMem(&data, &length, i.cPIX, pixFormat)
+	q := C.l_int32(quality)
+	p := C.l_int32(0)
+	if progressive {
+		p = C.l_int32(1)
+	}
+
+	C.pixWriteMemJpeg(&data, &length, i.cPIX, q, p)
 	defer C.free(unsafe.Pointer(data))
 	buf := C.GoBytes(unsafe.Pointer(data), C.int(size*int(length)))
 
-	return bytes.NewBuffer(buf), format, nil
+	return bytes.NewBuffer(buf), nil
+}
+
+// ReaderPNG returns an io.Reader for the image data, in PNG format.
+func (i Image) ReaderPNG(gamma float32) (*bytes.Buffer, error) {
+	var data *C.l_uint8
+	var length C.size_t
+	size := int(unsafe.Sizeof(*data))
+
+	g := C.l_float32(gamma)
+	C.pixWriteMemPng(&data, &length, i.cPIX, g)
+	defer C.free(unsafe.Pointer(data))
+	buf := C.GoBytes(unsafe.Pointer(data), C.int(size*int(length)))
+
+	return bytes.NewBuffer(buf), nil
+}
+
+// Reader returns an io.Reader for the image data. If format is not specified,
+// the reader will produce image data in the original image format. Otherwise,
+// `format` must be either "auto", "jpg" or "png"
+func (i Image) Reader(format string) (*bytes.Buffer, string, error) {
+	pixFormat := i.pixFormat
+	if format == "auto" {
+		pixFormat = C.IFF_PNG
+	}
+
+	switch pixFormat {
+	case C.IFF_PNG:
+		buf, err := i.ReaderPNG(0.0)
+		return buf, "png", err
+	case C.IFF_JFIF_JPEG:
+		buf, err := i.ReaderJPEG(75, false)
+		return buf, "jpg", err
+	default:
+		return nil, "", fmt.Errorf("unsupported image format %d", pixFormat)
+	}
 }
