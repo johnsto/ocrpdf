@@ -16,19 +16,21 @@ Both the Leptonica and Tesseract libraries must be installed.
 
 ### Leptonica
 
-Ensure that you have the Leptonica 1.71 library installed.
+Ensure that you have the Leptonica 1.71 library installed:
 
 * Debian: `apt-get install liblept3` (Jessie or newer)
-* Fedora: `yum install leptonica`
+* Fedora: `yum install leptonica-devel`
+* OpenSUSE: `zypper install leptonica-devel`
 * Arch: `pacman -S leptonica`
 * Windows: uh...
 
 ### Tesseract
 
-Ensure that you have the Tesseract 3.03.03 library and data files installed.
+Ensure that you have the Tesseract 3.02.02 library and data files installed:
 
 * Debian: `apt-get install libtesseract3 tesseract-ocr` (Jessie or newer)
-* Fedora: `yum install tesseract`
+* Fedora: `yum install tesseract tesseract-devel`
+* OpenSUSE: `zypper install tesseract tesseract-devel`
 * Arch `pacman -S tesseract tesseract-data-eng`
 * Windows: er...
 
