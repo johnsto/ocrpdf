@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alecthomas/kingpin"
 	"github.com/johnsto/ocrpdf"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -36,7 +36,7 @@ var (
 	docTitle    = app.Flag("title", "document title").Short('t').String()
 	docSubject  = app.Flag("subject", "document subject").Short('j').String()
 	docKeywords = app.Flag("keywords", "space-separated document keywords").
-			Short('t').String()
+			Short('k').String()
 	docAuthor  = app.Flag("author", "document author").Short('a').String()
 	docCreator = app.Flag("creator", "document creator").
 			Default("ocrpdf").String()
