@@ -36,7 +36,7 @@ var (
 			Default("auto").Short('r').Enum("auto", "portrait", "landscape")
 	docCompress = app.Flag("compress", "compress document").
 			Default("true").Short('c').Bool()
-	docDPI = app.Flag("dpi", "resize image to DPI").Default("0").Int()
+	docDPI = app.Flag("dpi", "resize image to DPI (0=disabled)").Default("0").Int()
 
 	// Document metadata
 	docTitle    = app.Flag("title", "document title").Short('t').String()
@@ -63,7 +63,7 @@ var (
 	imgContrast = app.Flag("contrast", "automatic contrast amount").
 			Default("0.5").Float()
 	imgFormat = app.Flag("format", "format to use when storing images in PDF").
-			Default("auto").Enum("auto", "jpg", "png")
+			Default("jpeg").Enum("jpeg", "png")
 	imgJPEGLevel = app.Flag("jpeg-level", "JPEG compression level").
 			Default(strconv.Itoa(ocrpdf.DefaultJPEGCompression)).Int()
 )
@@ -161,14 +161,14 @@ func main() {
 		}
 
 		w, h, d := img.Dimensions()
-		logvf("[P%d] Read '%s' (%dx%d@%d)\n", pageno, fn, w, h, d)
+		logvf("[P%d] Read '%s' (%dx%d@%dbpp)\n", pageno, fn, w, h, d)
 
 		if *docDPI != 0 {
 			// Resize image to requested d/in (rather, d/mm)
 			dpmm := float64(*docDPI) * MM_TO_INCH
 			pw, ph := doc.GetPageSize()
 			w, h := int32(pw*dpmm), int32(ph*dpmm)
-			logvf("[P%d] Scaling down to (%d,%d) @ %ddpi\n",
+			logvf("[P%d] Scaling down to (%dx%d) @ %ddpi\n",
 				pageno, w, h, *docDPI)
 			img = img.ScaleDown(w, h)
 		}
@@ -178,12 +178,12 @@ func main() {
 		tess.SetImagePix(img.CPIX())
 
 		// Extract words
-		logvf("[P%d] Recognising...", pageno)
+		logvf("[P%d] Finding text...", pageno)
 		words := tess.Words()
 		logvf(" %d words found.\n", len(words))
 
 		// Add to PDF
-		logvf("[P%d] Adding page\n", pageno)
+		logvf("[P%d] Adding page to document\n", pageno)
 		err = doc.AddPage(*img, fn, words, *imgFormat)
 		if err != nil {
 			fmt.Println(err)

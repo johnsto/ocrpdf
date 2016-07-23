@@ -155,11 +155,14 @@ func (i Image) ReaderPNG(gamma float32) (*bytes.Buffer, error) {
 
 // Reader returns an io.Reader for the image data. If format is not specified,
 // the reader will produce image data in the original image format. Otherwise,
-// `format` must be either "auto", "jpg" or "png"
+// `format` must be either "jpeg" or "png"
 func (i Image) Reader(format string) (*bytes.Buffer, string, error) {
 	pixFormat := i.pixFormat
-	if format == "auto" {
+	switch format {
+	case "png":
 		pixFormat = C.IFF_PNG
+	default:
+		pixFormat = C.IFF_JFIF_JPEG
 	}
 
 	switch pixFormat {
@@ -170,6 +173,7 @@ func (i Image) Reader(format string) (*bytes.Buffer, string, error) {
 		buf, err := i.ReaderJPEG(JPEGCompression, false)
 		return buf, "jpg", err
 	default:
-		return nil, "", fmt.Errorf("unsupported image format %d", pixFormat)
+		return nil, "", fmt.Errorf("unsupported image format %d [%s]",
+			pixFormat, format)
 	}
 }
