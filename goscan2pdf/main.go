@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/johnsto/ocrpdf"
@@ -63,6 +64,8 @@ var (
 			Default("0.5").Float()
 	imgFormat = app.Flag("format", "format to use when storing images in PDF").
 			Default("auto").Enum("auto", "jpg", "png")
+	imgJPEGLevel = app.Flag("jpeg-level", "JPEG compression level").
+			Default(strconv.Itoa(ocrpdf.DefaultJPEGCompression)).Int()
 )
 
 func init() {
@@ -72,6 +75,9 @@ func init() {
 
 func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
+
+	logv("Initialising Leptonica...")
+	ocrpdf.JPEGCompression = *imgJPEGLevel
 
 	logv("Initialising Tesseract...")
 	tess, err := ocrpdf.NewTess(*tessData, *tessLang)

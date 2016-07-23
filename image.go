@@ -15,6 +15,8 @@ import (
 
 const DefaultJPEGCompression int = 75
 
+var JPEGCompression int = DefaultJPEGCompression
+
 // NewImageFromFile creates and returns a new image loaded from the given
 // file path.
 func NewImageFromFile(filename string) (*Image, error) {
@@ -165,7 +167,7 @@ func (i Image) Reader(format string) (*bytes.Buffer, string, error) {
 		buf, err := i.ReaderPNG(0.0)
 		return buf, "png", err
 	case C.IFF_JFIF_JPEG:
-		buf, err := i.ReaderJPEG(DefaultJPEGCompression, false)
+		buf, err := i.ReaderJPEG(JPEGCompression, false)
 		return buf, "jpg", err
 	default:
 		return nil, "", fmt.Errorf("unsupported image format %d", pixFormat)
