@@ -13,6 +13,8 @@ import (
 	"unsafe"
 )
 
+const DefaultJPEGCompression int = 75
+
 // NewImageFromFile creates and returns a new image loaded from the given
 // file path.
 func NewImageFromFile(filename string) (*Image, error) {
@@ -84,6 +86,25 @@ func (i Image) Dimensions() (int32, int32, int32) {
 	return w, h, d
 }
 
+// Scale resizes the image to the specified dimensions.
+func (i *Image) Scale(w, h int32) *Image {
+	result := C.pixScaleToSize(i.cPIX, C.l_int32(w), C.l_int32(h))
+	return &Image{
+		cPIX: result,
+	}
+}
+
+// ScaleDown scales down the image to the specified dimensions, returning
+// the original image if it is already smaller (in terms of pixel count)
+func (i *Image) ScaleDown(w, h int32) *Image {
+	cw, ch, _ := i.Dimensions()
+	if int64(w)*int64(h) < int64(cw)*int64(ch) {
+		return i.Scale(w, h)
+	}
+	// No scaling necessary
+	return i
+}
+
 // FormatString returns the image format as a string, e.g. 'jpg'
 func (i Image) FormatString() string {
 	return map[C.l_int32]string{
@@ -144,7 +165,7 @@ func (i Image) Reader(format string) (*bytes.Buffer, string, error) {
 		buf, err := i.ReaderPNG(0.0)
 		return buf, "png", err
 	case C.IFF_JFIF_JPEG:
-		buf, err := i.ReaderJPEG(75, false)
+		buf, err := i.ReaderJPEG(DefaultJPEGCompression, false)
 		return buf, "jpg", err
 	default:
 		return nil, "", fmt.Errorf("unsupported image format %d", pixFormat)

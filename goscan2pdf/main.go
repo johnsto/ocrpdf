@@ -10,6 +10,10 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
+const (
+	MM_TO_INCH float64 = 0.039
+)
+
 var (
 	debug   = false
 	verbose = false
@@ -31,6 +35,7 @@ var (
 			Default("auto").Short('r').Enum("auto", "portrait", "landscape")
 	docCompress = app.Flag("compress", "compress document").
 			Default("true").Short('c').Bool()
+	docDPI = app.Flag("dpi", "resize image to DPI").Default("0").Int()
 
 	// Document metadata
 	docTitle    = app.Flag("title", "document title").Short('t').String()
@@ -129,7 +134,8 @@ func main() {
 	outfile, err := os.OpenFile(outfn, openFlags, 0666)
 
 	if os.IsExist(err) {
-		logef("Output file '%s' already exists. Use -force to overwrite.\n", outfn)
+		logef("Output file '%s' already exists. Use -force to overwrite.\n",
+			outfn)
 		os.Exit(1)
 	} else if err != nil {
 		logef("Couldn't create output file '%s': %s\n", outfn, err)
@@ -140,19 +146,37 @@ func main() {
 	for i, fn := range infns {
 		pageno := i + 1
 
+		// Read image file
 		logvf("[P%d] Reading '%s'...\n", pageno, fn)
 		img, err := ocrpdf.NewImageFromFile(fn)
 		if err != nil {
 			logef("Unable to read image from file '%s'\n", fn)
 			os.Exit(1)
 		}
+
+		w, h, d := img.Dimensions()
+		logvf("[P%d] Read '%s' (%dx%d@%d)\n", pageno, fn, w, h, d)
+
+		if *docDPI != 0 {
+			// Resize image to requested d/in (rather, d/mm)
+			dpmm := float64(*docDPI) * MM_TO_INCH
+			pw, ph := doc.GetPageSize()
+			w, h := int32(pw*dpmm), int32(ph*dpmm)
+			logvf("[P%d] Scaling down to (%d,%d) @ %ddpi\n",
+				pageno, w, h, *docDPI)
+			img = img.ScaleDown(w, h)
+		}
+
+		// Increase contrast
 		img = img.Adjust(float32(*imgContrast))
 		tess.SetImagePix(img.CPIX())
 
+		// Extract words
 		logvf("[P%d] Recognising...", pageno)
 		words := tess.Words()
 		logvf(" %d words found.\n", len(words))
 
+		// Add to PDF
 		logvf("[P%d] Adding page\n", pageno)
 		err = doc.AddPage(*img, fn, words, *imgFormat)
 		if err != nil {
