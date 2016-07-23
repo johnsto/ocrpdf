@@ -6,7 +6,7 @@
 
 ## I demand a GUI!
 
-You're probably better off with [`gscan2pdf`](http://gscan2pdf.sourceforge.net/), which was the original inspiration for this tool (obligatory Sourceforge warning)
+You're probably better off with [`gscan2pdf`](http://gscan2pdf.sourceforge.net/), which was the original inspiration for this tool.
 
 ## Installation
 
